@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Threadlock — The Quiet App That Has Your Back</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'system-ui', 'sans-serif'],
+            serif: ['"Instrument Serif"', 'Georgia', 'serif'],
+          },
+          colors: {
+            linen: '#FAF9F6',
+            paper: '#FFFFFF',
+            stoneSoft: '#F2F1EC',
+            ink: '#1D1D1F',
+            inkMuted: '#6E6E73',
+            inkLight: '#86868B',
+            appleBlue: '#0071E3',
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    html, body {
+      background-color: #FAF9F6;
+      color: #1D1D1F;
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      scroll-behavior: smooth;
+      overflow-x: hidden;
+    }
+
+    .apple-glass {
+      background: rgba(250, 249, 246, 0.8);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+    }
+
+    .muse-canvas {
+      background-color: #F4F3EE;
+      background-image: radial-gradient(rgba(29, 29, 31, 0.08) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    .muse-card {
+      background: #FFFFFF;
+      border: 1px solid rgba(29, 29, 31, 0.075);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.025), 0 14px 34px rgba(0, 0, 0, 0.035);
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .muse-card:hover {
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04), 0 20px 44px rgba(0, 0, 0, 0.055);
+    }
+
+    .frosted-whisper {
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: saturate(200%) blur(26px);
+      -webkit-backdrop-filter: saturate(200%) blur(26px);
+      border: 1px solid rgba(255, 255, 255, 0.92);
+      box-shadow: 0 24px 60px rgba(29, 29, 31, 0.12), 0 2px 8px rgba(29, 29, 31, 0.04);
+    }
+
+    .ambient-wallpaper {
+      background:
+        radial-gradient(circle at 20% 20%, rgba(255, 218, 178, 0.45), transparent 45%),
+        radial-gradient(circle at 80% 25%, rgba(190, 218, 255, 0.48), transparent 48%),
+        radial-gradient(circle at 50% 85%, rgba(228, 212, 250, 0.42), transparent 52%),
+        #ECEAE4;
+    }
+
+    .display-tight { letter-spacing: -0.036em; }
+
+    @keyframes fillBar {
+      from { width: 0%; }
+      to { width: 100%; }
+    }
+    .story-bar-run { animation: fillBar 4.8s linear forwards; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-up { animation: fadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
+    @keyframes softPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.92); }
+    }
+    .soft-pulse { animation: softPulse 2.6s infinite ease-in-out; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-ink selection:text-white">
+
+  <!-- TOAST -->
+  <div id="toast-wrap" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 pointer-events-none hidden">
+    <div class="px-4 py-2.5 rounded-full bg-ink text-white text-xs font-medium shadow-2xl flex items-center gap-2.5">
+      <span id="toast-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+      <span id="toast-text"></span>
+    </div>
+  </div>
+
+  <!-- MINIMAL APPLE-GLASS HEADER -->
+  <header class="sticky top-0 z-40 apple-glass border-b border-ink/[0.07]">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+      <button id="btn-brand" type="button" class="flex items-center gap-2.5 focus:outline-none">
+        <div class="w-8 h-8 rounded-[10px] bg-ink text-white flex items-center justify-center shadow-sm">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3v18"/><path d="M5 8h14"/><path d="M5 16h14"/>
+          </svg>
+        </div>
+        <span class="font-semibold tracking-tight text-ink text-[15px]">Threadlock</span>
+      </button>
+
+      <!-- Clean 2-Item Segmented Pill -->
+      <nav class="flex items-center gap-1 bg-stoneSoft p-1 rounded-full border border-ink/[0.06]">
+        <button type="button" data-page="home" class="page-tab px-4 py-1.5 rounded-full text-xs font-medium bg-white text-ink shadow-sm transition-all">Overview</button>
+        <button type="button" data-page="try" class="page-tab px-4 py-1.5 rounded-full text-xs font-medium text-inkMuted hover:text-ink transition-all">Try With Your Own Words</button>
+      </nav>
+
+      <button type="button" id="btn-nav-download" class="px-4 py-2 rounded-full bg-ink hover:bg-neutral-800 text-white text-xs font-medium transition-colors shadow-sm">
+        Download App
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 w-full">
+
+    <!-- ===================================================================
+         PAGE 1: OVERVIEW (Calm, Jargon-Free, App-First Bond × Apple × Muse)
+         =================================================================== -->
+    <section id="page-home" class="page-view">
+
+      <!-- HERO -->
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 pt-20 pb-14 sm:pt-28 sm:pb-20 text-center space-y-7">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-ink/[0.08] shadow-sm text-xs text-inkMuted font-medium">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 soft-pulse"></span>
+          <span>Lives quietly in your menu bar · macOS &amp; Windows</span>
+        </div>
+
+        <h1 class="text-4xl sm:text-6xl lg:text-[68px] font-semibold display-tight leading-[1.04] text-ink">
+          The quiet app that <span class="font-serif italic font-normal">always</span> has your back.
+        </h1>
+
+        <p class="text-base sm:text-xl text-inkMuted leading-relaxed max-w-2xl mx-auto">
+          Install Threadlock once and forget it&apos;s there. It listens quietly on your calls with no bots, catches hidden traps in your contracts, and wakes you up with one calm list of what needs a tap today.
+        </p>
+
+        <!-- APP DOWNLOAD IS THE HERO (The core invisible moat) -->
+        <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <button type="button" id="btn-hero-mac" class="px-7 py-3.5 rounded-full bg-ink hover:bg-neutral-800 text-white text-sm font-medium transition-all shadow-md hover:shadow-lg flex items-center gap-2.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Download for Mac</span>
+          </button>
+          <button type="button" id="btn-hero-win" class="px-7 py-3.5 rounded-full bg-white hover:bg-stoneSoft border border-ink/[0.12] text-ink text-sm font-medium transition-all shadow-sm">
+            Download for Windows
+          </button>
+        </div>
+
+        <p class="text-xs text-inkLight">
+          Free to start · Invisible on screen share · Connects your email, calendar &amp; chat in one click
+        </p>
+      </div>
+
+      <!-- ANIMATED BOND-STYLE VISUAL EXPLAINER (Zero fake people, pure calm clarity) -->
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 pb-24">
+        <div class="rounded-[30px] muse-canvas border border-ink/[0.08] p-6 sm:p-10 lg:p-12 shadow-inner space-y-10">
+          <div class="text-center max-w-xl mx-auto space-y-2">
+            <div class="text-xs font-semibold uppercase tracking-wider text-inkLight">How it feels to use</div>
+            <h2 class="text-2xl sm:text-3xl font-semibold display-tight text-ink">
+              Nothing to open. Nothing to organize.
+            </h2>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <!-- 3 Quiet Animated Steps -->
+            <div class="lg:col-span-5 space-y-3">
+              <button type="button" data-step="0" class="step-btn w-full text-left p-5 rounded-2xl bg-white border border-ink/15 shadow-sm space-y-2 transition-all">
+                <div class="text-[11px] font-semibold uppercase tracking-wider text-inkLight">01 · During a call</div>
+                <div class="text-sm font-semibold text-ink">A quiet whisper only you can see</div>
+                <p class="text-xs text-inkMuted leading-relaxed">
+                  No awkward bot joins your meeting. When a tough question or past quote comes up, a tiny frosted note appears for you—invisible on screen share.
+                </p>
+                <div class="h-1 w-full bg-stoneSoft rounded-full overflow-hidden">
+                  <div id="bar-0" class="h-full bg-ink rounded-full story-bar-run"></div>
+                </div>
+              </button>
+
+              <button type="button" data-step="1" class="step-btn w-full text-left p-5 rounded-2xl bg-linen/70 border border-ink/[0.06] space-y-2 transition-all">
+                <div class="text-[11px] font-semibold uppercase tracking-wider text-inkLight">02 · When terms arrive</div>
+                <div class="text-sm font-semibold text-ink">Hidden traps caught before you sign</div>
+                <p class="text-xs text-inkMuted leading-relaxed">
+                  Unfair usage rights, endless revisions, or delayed payment terms are highlighted in plain language—with a polite counter-reply ready to copy.
+                </p>
+                <div class="h-1 w-full bg-stoneSoft rounded-full overflow-hidden">
+                  <div id="bar-1" class="h-full bg-ink rounded-full w-0"></div>
+                </div>
+              </button>
+
+              <button type="button" data-step="2" class="step-btn w-full text-left p-5 rounded-2xl bg-linen/70 border border-ink/[0.06] space-y-2 transition-all">
+                <div class="text-[11px] font-semibold uppercase tracking-wider text-inkLight">03 · Every morning</div>
+                <div class="text-sm font-semibold text-ink">One calm list in your chat</div>
+                <p class="text-xs text-inkMuted leading-relaxed">
+                  Everything you promised across calls, messages, and email arrives neatly drafted. Nothing ever sends until you tap approve.
+                </p>
+                <div class="h-1 w-full bg-stoneSoft rounded-full overflow-hidden">
+                  <div id="bar-2" class="h-full bg-ink rounded-full w-0"></div>
+                </div>
+              </button>
+            </div>
+
+            <!-- Abstract, Clean Animated Stage -->
+            <div class="lg:col-span-7">
+              <div class="rounded-[24px] ambient-wallpaper border border-ink/[0.08] p-6 sm:p-10 min-h-[340px] flex items-center justify-center">
+                <div id="stage-card" class="w-full max-w-md animate-fade-up"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WHO IT'S BUILT FOR (Calm Category Positioning — No Competitor Bashing) -->
+      <div class="bg-white border-t border-b border-ink/[0.07]">
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 py-20 space-y-12">
+          <div class="max-w-2xl space-y-3">
+            <div class="text-xs font-semibold uppercase tracking-wider text-inkLight">Why one quiet app beats five tools</div>
+            <h2 class="text-3xl sm:text-4xl font-semibold display-tight text-ink">
+              Most inbox tools stop before the call. Most call tools forget after it.
+            </h2>
+            <p class="text-sm text-inkMuted leading-relaxed">
+              Threadlock connects both worlds into a single private memory on your computer—so nothing slips between your calls, your inbox, and your bank account.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="p-6 rounded-2xl bg-linen border border-ink/[0.06] space-y-2.5">
+              <div class="text-xs font-semibold text-inkLight">For Founders &amp; Agencies</div>
+              <div class="text-base font-semibold text-ink">Zero admin drag</div>
+              <p class="text-xs text-inkMuted leading-relaxed">
+                Keep client promises, revised quotes, and overdue invoices organized automatically without ever maintaining a spreadsheet or CRM.
+              </p>
+            </div>
+            <div class="p-6 rounded-2xl bg-linen border border-ink/[0.06] space-y-2.5">
+              <div class="text-xs font-semibold text-inkLight">For Independent Creatives</div>
+              <div class="text-base font-semibold text-ink">Protect every agreement</div>
+              <p class="text-xs text-inkMuted leading-relaxed">
+                Spot sneaky rights clauses, track exact net payouts in your local currency, and share one clean approval link instead of chasing threads.
+              </p>
+            </div>
+            <div class="p-6 rounded-2xl bg-linen border border-ink/[0.06] space-y-2.5">
+              <div class="text-xs font-semibold text-inkLight">For Lean Sales Teams</div>
+              <div class="text-base font-semibold text-ink">Stay sharp live</div>
+              <p class="text-xs text-inkMuted leading-relaxed">
+                Walk into every call with instant context from past messages and calls—no bots in the room and no post-call scramble.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SIMPLE PRIVACY PROMISE -->
+      <div class="max-w-5xl mx-auto px-4 sm:px-6 py-16 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <div class="space-y-1">
+          <h3 class="text-base font-semibold text-ink">Private by default. Always under your control.</h3>
+          <p class="text-sm text-inkMuted">Your conversations are never used to train AI, and nothing is ever sent without your tap.</p>
+        </div>
+        <button type="button" id="btn-footer-try" class="px-5 py-2.5 rounded-full bg-white hover:bg-stoneSoft border border-ink/[0.12] text-xs font-medium text-ink shadow-sm transition-colors">
+          Try With Your Own Words &rarr;
+        </button>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         PAGE 2: TRY WITH YOUR OWN WORDS (100% Clean Blank Input — Zero Dummy Data)
+         =================================================================== -->
+    <section id="page-try" class="page-view hidden">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 py-12 space-y-8">
+        <div class="space-y-2 border-b border-ink/[0.08] pb-6">
+          <div class="text-xs font-semibold uppercase tracking-wider text-inkLight">Live Sandbox</div>
+          <h2 class="text-3xl font-semibold display-tight text-ink">Test Threadlock on your own text</h2>
+          <p class="text-sm text-inkMuted">Nothing is pre-filled. Paste any real email, chat message, or contract clause below to see how Threadlock organizes your follow-ups and flags hidden risks.</p>
+        </div>
+
+        <!-- Clean Input Card -->
+        <div class="muse-card rounded-2xl p-6 sm:p-8 space-y-5">
+          <div>
+            <label for="user-own-text" class="block text-xs font-semibold text-ink mb-2">Paste a message, call note, or contract paragraph</label>
+            <textarea id="user-own-text" rows="6" placeholder="Paste your own text here... (e.g., a client message promising next steps, an invoice follow-up, or a contract clause about usage rights or payment terms)" class="w-full p-4 rounded-xl bg-linen border border-ink/[0.1] text-sm text-ink placeholder:text-inkLight focus:outline-none focus:border-ink leading-relaxed"></textarea>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span class="text-xs text-inkLight">Runs privately right here in your browser.</span>
+            <div class="flex items-center gap-2">
+              <button type="button" id="btn-clear-input" class="px-4 py-2 rounded-full text-xs font-medium text-inkMuted hover:text-ink transition-colors">Clear</button>
+              <button type="button" id="btn-analyze-own" class="px-6 py-2.5 rounded-full bg-ink hover:bg-neutral-800 text-white text-xs font-medium shadow-sm transition-colors">
+                Check Now
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Result Area (Starts Clean) -->
+        <div id="own-result-area" class="hidden space-y-4 animate-fade-up"></div>
+
+        <!-- Clean Payout & Currency Helper (Starts Empty Until User Enters a Number) -->
+        <div class="muse-card rounded-2xl p-6 sm:p-8 space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 class="text-base font-semibold text-ink">Quick Payout Check</h3>
+              <p class="text-xs text-inkMuted mt-0.5">Enter your own deal amount to preview clean net take-home in your currency.</p>
+            </div>
+            <select id="payout-currency" class="px-3.5 py-1.5 rounded-full bg-stoneSoft border border-ink/[0.08] text-xs font-medium text-ink">
+              <option value="USD">USD ($)</option>
+              <option value="EUR">EUR (€)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="INR">INR (₹ · GST/TDS)</option>
+            </select>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+            <div>
+              <label for="payout-input" class="block text-xs font-medium text-inkMuted mb-1.5">Your deal amount</label>
+              <input id="payout-input" type="number" min="0" placeholder="Enter amount..." class="w-full px-4 py-2.5 rounded-xl bg-linen border border-ink/[0.1] text-sm font-medium text-ink placeholder:text-inkLight focus:outline-none focus:border-ink" />
+            </div>
+            <div id="payout-output" class="p-3.5 rounded-xl bg-linen border border-ink/[0.06] text-xs text-inkMuted">
+              Enter an amount above to see your net payout.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- EARLY-ACCESS WAITLIST (14-DAY FREE TRIAL) + DIRECT INSTALLER SLOT -->
+  <div id="download-modal" class="fixed inset-0 z-50 bg-ink/40 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-white rounded-[26px] max-w-md w-full p-7 shadow-2xl border border-ink/[0.08] space-y-5 animate-fade-up">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">Early Access · 14-Day Free Trial</div>
+          <h3 class="text-xl font-semibold display-tight text-ink mt-1">Join the waitlist for your 14-day free trial</h3>
+          <p class="text-xs text-inkMuted mt-1 leading-relaxed">
+            Reserve your spot to receive the private macOS or Windows installer the moment your invite unlocks—including 14 days of full Pro access free.
+          </p>
+        </div>
+        <button type="button" id="btn-close-dl" class="p-1.5 rounded-full hover:bg-stoneSoft text-inkMuted hover:text-ink" aria-label="Close">✕</button>
+      </div>
+
+      <form id="waitlist-form" class="space-y-3">
+        <div class="flex bg-stoneSoft p-1 rounded-full border border-ink/[0.06] text-xs font-medium">
+          <button type="button" id="wl-os-mac" class="flex-1 py-1.5 rounded-full bg-white text-ink shadow-sm transition-all">macOS</button>
+          <button type="button" id="wl-os-win" class="flex-1 py-1.5 rounded-full text-inkMuted hover:text-ink transition-all">Windows</button>
+        </div>
+
+        <div>
+          <label for="wl-email" class="sr-only">Work or personal email</label>
+          <input id="wl-email" type="email" required placeholder="Enter your email address..." class="w-full px-4 py-3 rounded-full bg-linen border border-ink/[0.12] text-xs text-ink placeholder:text-inkLight focus:outline-none focus:border-ink" />
+        </div>
+
+        <button type="submit" id="btn-wl-submit" class="w-full py-3 px-5 rounded-full bg-ink hover:bg-neutral-800 text-white text-xs font-medium transition-colors shadow-sm">
+          Join Waitlist &amp; Claim 14-Day Free Trial
+        </button>
+      </form>
+
+      <div id="wl-success-box" class="hidden p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1">
+        <div class="font-semibold">You&apos;re on the early-access list.</div>
+        <p id="wl-success-detail" class="text-emerald-800"></p>
+      </div>
+
+      <div class="pt-3 border-t border-ink/[0.07] space-y-1.5 text-xs text-inkMuted">
+        <div class="font-medium text-ink">What your 14-day free trial includes:</div>
+        <div>✓ Silent menu-bar app for Mac or Windows (zero meeting bots)</div>
+        <div>✓ Calm 8:00 AM morning whisper &amp; contract trap protection</div>
+        <div>✓ No credit card required to join</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // TOAST & NAVIGATION
+    // =========================================================================
+    function showToast(msg, dotClass = 'bg-emerald-400') {
+      const wrap = document.getElementById('toast-wrap');
+      document.getElementById('toast-text').textContent = msg;
+      document.getElementById('toast-dot').className = 'w-2 h-2 rounded-full ' + dotClass;
+      wrap.classList.remove('hidden');
+      clearTimeout(window.__tTimer);
+      window.__tTimer = setTimeout(() => wrap.classList.add('hidden'), 3200);
+    }
+
+    function switchPage(name) {
+      document.querySelectorAll('.page-view').forEach(el => el.classList.add('hidden'));
+      const target = document.getElementById('page-' + name);
+      if (target) target.classList.remove('hidden');
+      document.querySelectorAll('.page-tab').forEach(btn => {
+        const active = btn.dataset.page === name;
+        btn.className = active
+          ? 'page-tab px-4 py-1.5 rounded-full text-xs font-medium bg-white text-ink shadow-sm transition-all'
+          : 'page-tab px-4 py-1.5 rounded-full text-xs font-medium text-inkMuted hover:text-ink transition-all';
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    document.querySelectorAll('.page-tab').forEach(btn => {
+      btn.addEventListener('click', () => switchPage(btn.dataset.page));
+    });
+    document.getElementById('btn-brand').addEventListener('click', () => switchPage('home'));
+    document.getElementById('btn-footer-try').addEventListener('click', () => switchPage('try'));
+
+    // =========================================================================
+    // WAITLIST (14-DAY FREE TRIAL) + DIRECT INSTALLER LINK SLOT
+    // Paste your compiled .dmg / .exe URLs here when ready to switch from waitlist to instant download!
+    // =========================================================================
+    const MAC_INSTALLER_URL = '';
+    const WIN_INSTALLER_URL = '';
+
+    let selectedPlatform = 'macOS';
+    const dlModal = document.getElementById('download-modal');
+
+    function setPlatform(plat) {
+      selectedPlatform = plat;
+      document.getElementById('wl-os-mac').className = plat === 'macOS' ? 'flex-1 py-1.5 rounded-full bg-white text-ink shadow-sm transition-all' : 'flex-1 py-1.5 rounded-full text-inkMuted hover:text-ink transition-all';
+      document.getElementById('wl-os-win').className = plat === 'Windows' ? 'flex-1 py-1.5 rounded-full bg-white text-ink shadow-sm transition-all' : 'flex-1 py-1.5 rounded-full text-inkMuted hover:text-ink transition-all';
+    }
+
+    function openDlModal(preferredOs) {
+      if (preferredOs === 'macOS' && MAC_INSTALLER_URL) { window.open(MAC_INSTALLER_URL, '_blank', 'noopener'); return; }
+      if (preferredOs === 'Windows' && WIN_INSTALLER_URL) { window.open(WIN_INSTALLER_URL, '_blank', 'noopener'); return; }
+      if (preferredOs) setPlatform(preferredOs);
+      dlModal.classList.remove('hidden');
+      dlModal.classList.add('flex');
+    }
+    function closeDlModal() { dlModal.classList.add('hidden'); dlModal.classList.remove('flex'); }
+
+    document.getElementById('btn-nav-download').addEventListener('click', () => openDlModal('macOS'));
+    document.getElementById('btn-hero-mac').addEventListener('click', () => openDlModal('macOS'));
+    document.getElementById('btn-hero-win').addEventListener('click', () => openDlModal('Windows'));
+    document.getElementById('btn-close-dl').addEventListener('click', closeDlModal);
+    document.getElementById('wl-os-mac').addEventListener('click', () => setPlatform('macOS'));
+    document.getElementById('wl-os-win').addEventListener('click', () => setPlatform('Windows'));
+
+    document.getElementById('waitlist-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('wl-email').value.trim();
+      if (!email || !email.includes('@')) {
+        showToast('Please enter a valid email address', 'bg-amber-400');
+        return;
+      }
+      const isHosted = window.location.protocol.startsWith('http') && !window.location.hostname.includes('googleusercontent');
+      if (isHosted) {
+        try {
+          await fetch('/api/v1/waitlist', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, platform: selectedPlatform })
+          });
+        } catch (err) {}
+      }
+      try {
+        const list = JSON.parse(localStorage.getItem('threadlock_waitlist') || '[]');
+        list.push({ email, platform: selectedPlatform, at: new Date().toISOString() });
+        localStorage.setItem('threadlock_waitlist', JSON.stringify(list));
+      } catch (err) {}
+
+      document.getElementById('waitlist-form').classList.add('hidden');
+      document.getElementById('wl-success-detail').textContent =
+        `We reserved your 14-day free trial for ${email} (${selectedPlatform}). You'll receive your private installer link as soon as your invite opens.`;
+      document.getElementById('wl-success-box').classList.remove('hidden');
+      showToast('Waitlist spot & 14-day free trial reserved');
+    });
+
+    // =========================================================================
+    // BOND-STYLE AUTO-ADVANCING ABSTRACT VISUAL EXPLAINER (ZERO FAKE PEOPLE)
+    // =========================================================================
+    const STAGE_VIEWS = [
+      `<div class="frosted-whisper rounded-2xl p-6 space-y-4 text-left">
+         <div class="flex items-center justify-between text-[11px]">
+           <span class="font-semibold text-emerald-700 flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Listening silently · No bot in call</span>
+           <span class="text-inkLight">Visible only to you</span>
+         </div>
+         <div class="space-y-1.5">
+           <div class="text-xs text-inkMuted">Live whisper</div>
+           <div class="text-sm font-semibold text-ink leading-snug">
+             Your latest agreed scope superseded last month&apos;s draft. Mention the added deliverables before discussing price.
+           </div>
+         </div>
+         <div class="pt-1 flex items-center justify-between text-[11px] text-inkLight">
+           <span>Hidden during screen share</span>
+           <span>Fades away automatically</span>
+         </div>
+       </div>`,
+      `<div class="muse-card rounded-2xl p-6 space-y-4 text-left">
+         <div class="flex items-center justify-between text-[11px]">
+           <span class="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 font-semibold">Clause flagged</span>
+           <span class="text-inkLight">Before you sign</span>
+         </div>
+         <div class="space-y-2">
+           <div class="text-sm font-semibold text-ink">Unlimited usage rights detected</div>
+           <p class="text-xs text-inkMuted leading-relaxed">
+             This draft grants permanent ad rights at no extra cost. A fair 60-day counter-clause is ready whenever you want to reply.
+           </p>
+         </div>
+         <div class="p-3 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-950">
+           Suggested edit: Cap paid usage to 60 days, with optional monthly extensions.
+         </div>
+       </div>`,
+      `<div class="muse-card rounded-2xl p-6 space-y-4 text-left">
+         <div class="flex items-center justify-between text-[11px]">
+           <span class="font-semibold text-ink">8:00 AM Morning Whisper</span>
+           <span class="text-appleBlue font-medium">Arrives in your chat</span>
+         </div>
+         <div class="space-y-2.5 text-xs">
+           <div class="p-3 rounded-xl bg-linen border border-ink/[0.06] flex items-center justify-between">
+             <span class="text-ink font-medium">1 promised follow-up drafted</span>
+             <span class="text-inkLight">Ready</span>
+           </div>
+           <div class="p-3 rounded-xl bg-linen border border-ink/[0.06] flex items-center justify-between">
+             <span class="text-ink font-medium">1 overdue invoice nudge staged</span>
+             <span class="text-inkLight">Ready</span>
+           </div>
+         </div>
+         <div class="text-[11px] text-inkLight">Nothing ever sends until you tap approve.</div>
+       </div>`
+    ];
+
+    let curStep = 0;
+    let stepTimer = null;
+
+    function showStep(idx) {
+      curStep = idx;
+      const stage = document.getElementById('stage-card');
+      if (stage) {
+        stage.classList.remove('animate-fade-up');
+        void stage.offsetWidth;
+        stage.innerHTML = STAGE_VIEWS[idx];
+        stage.classList.add('animate-fade-up');
+      }
+      document.querySelectorAll('.step-btn').forEach((btn, i) => {
+        btn.className = i === idx
+          ? 'step-btn w-full text-left p-5 rounded-2xl bg-white border border-ink/15 shadow-sm space-y-2 transition-all'
+          : 'step-btn w-full text-left p-5 rounded-2xl bg-linen/70 border border-ink/[0.06] space-y-2 transition-all';
+        const bar = document.getElementById('bar-' + i);
+        if (bar) {
+          bar.className = i === idx ? 'h-full bg-ink rounded-full story-bar-run' : 'h-full bg-ink rounded-full w-0';
+        }
+      });
+    }
+
+    function runStepLoop() {
+      clearInterval(stepTimer);
+      showStep(curStep);
+      stepTimer = setInterval(() => {
+        curStep = (curStep + 1) % STAGE_VIEWS.length;
+        showStep(curStep);
+      }, 4800);
+    }
+
+    document.querySelectorAll('.step-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        curStep = Number(btn.dataset.step);
+        runStepLoop();
+      });
+    });
+
+    // =========================================================================
+    // CLEAN USER-DRIVEN LIVE SANDBOX (ZERO HARDCODED DUMMY DATA)
+    // =========================================================================
+    document.getElementById('btn-clear-input').addEventListener('click', () => {
+      document.getElementById('user-own-text').value = '';
+      document.getElementById('own-result-area').classList.add('hidden');
+    });
+
+    document.getElementById('btn-analyze-own').addEventListener('click', () => {
+      const raw = document.getElementById('user-own-text').value.trim();
+      const area = document.getElementById('own-result-area');
+      if (!raw) {
+        showToast('Paste your own message or clause first', 'bg-amber-400');
+        return;
+      }
+      const lower = raw.toLowerCase();
+      const cards = [];
+
+      if (lower.includes('perpetuit') || lower.includes('irrevocable') || lower.includes('whitelisting') || lower.includes('forever')) {
+        cards.push({
+          tag: 'Rights trap',
+          tone: 'bg-rose-50 text-rose-700 border-rose-200',
+          title: 'Permanent usage rights detected',
+          body: 'This language gives away lifetime ad or content rights without renewal fees. Suggest limiting usage to 60 days with optional paid extensions.'
+        });
+      }
+      if (lower.includes('unlimited revision') || lower.includes('unlimited edits')) {
+        cards.push({
+          tag: 'Scope creep',
+          tone: 'bg-amber-50 text-amber-800 border-amber-200',
+          title: 'Unlimited free revisions detected',
+          body: 'Suggest capping included edits at 2 consolidated rounds so extra changes are billed fairly.'
+        });
+      }
+      if (lower.includes('net 60') || lower.includes('net-60') || lower.includes('net 90') || lower.includes('net-90') || lower.includes('overdue') || lower.includes('invoice')) {
+        cards.push({
+          tag: 'Payment radar',
+          tone: 'bg-amber-50 text-amber-800 border-amber-200',
+          title: 'Payment term or invoice follow-up detected',
+          body: 'Threadlock can stage a polite reminder in your morning brief or suggest 50% upfront / Net-15 on delivery.'
+        });
+      }
+      if (lower.includes('send') || lower.includes('tomorrow') || lower.includes('friday') || lower.includes('promise') || lower.includes('follow up') || lower.includes('share')) {
+        cards.push({
+          tag: 'Promise captured',
+          tone: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          title: 'Added to your Morning Whisper',
+          body: 'We detected an open commitment in your note and staged a calm follow-up draft for your approval.'
+        });
+      }
+
+      if (cards.length === 0) {
+        cards.push({
+          tag: 'All clear',
+          tone: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+          title: 'No risky clauses or urgent promises spotted',
+          body: 'Your text looks clean. Threadlock would simply file this quietly into your timeline without interrupting your morning.'
+        });
+      }
+
+      area.innerHTML = cards.map(c => `
+        <div class="muse-card rounded-2xl p-5 space-y-2">
+          <span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${c.tone}">${c.tag}</span>
+          <div class="text-sm font-semibold text-ink">${c.title}</div>
+          <p class="text-xs text-inkMuted leading-relaxed">${c.body}</p>
+        </div>
+      `).join('');
+      area.classList.remove('hidden');
+      showToast('Checked your text privately');
+    });
+
+    // Clean Payout Helper (Only computes when user enters their own number)
+    function updatePayout() {
+      const val = Number(document.getElementById('payout-input').value);
+      const curr = document.getElementById('payout-currency').value;
+      const out = document.getElementById('payout-output');
+      if (!val || val <= 0) {
+        out.textContent = 'Enter an amount above to see your net payout.';
+        return;
+      }
+      if (curr === 'INR') {
+        const gst = Math.round(val * 0.18);
+        const tds = val > 30000 ? Math.round(val * 0.10) : 0;
+        const net = val + gst - tds;
+        out.innerHTML = `<strong class="text-ink">Net bank payout: ₹${net.toLocaleString('en-IN')}</strong> <span class="text-inkLight block mt-0.5">Includes +₹${gst.toLocaleString('en-IN')} GST${tds ? ` and −₹${tds.toLocaleString('en-IN')} TDS` : ' (no TDS under ₹30,000)'}</span>`;
+      } else {
+        const sym = curr === 'EUR' ? '€' : curr === 'GBP' ? '£' : '$';
+        out.innerHTML = `<strong class="text-ink">Clean invoice total: ${sym}${val.toLocaleString('en-US')}</strong> <span class="text-inkLight block mt-0.5">Ready to share with automatic polite payment reminders.</span>`;
+      }
+    }
+    document.getElementById('payout-input').addEventListener('input', updatePayout);
+    document.getElementById('payout-currency').addEventListener('change', updatePayout);
+
+    // Boot
+    runStepLoop();
+  </script>
+</body>
+</html>
