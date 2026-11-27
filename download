@@ -1,0 +1,6 @@
+.env
+.threadlock/*.pem
+.threadlock/*.db
+.threadlock/*.jsonl
+__pycache__/
+*.pyc
